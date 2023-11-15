@@ -3,7 +3,10 @@ import time
 from cent import Client
 import jwt
 
-from config import CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY, CENTRIFUGO_SECRET
+try:
+    from config import CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY, CENTRIFUGO_SECRET
+except ModuleNotFoundError:
+    from config_example import CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY, CENTRIFUGO_SECRET
 
 cent_client = Client(CENTRIFUGO_API_URL, api_key=CENTRIFUGO_API_KEY, timeout=3)
 
