@@ -1,3 +1,4 @@
+import imghdr
 import logging
 from uuid import uuid4
 
@@ -5,6 +6,7 @@ import boto3
 import botocore.exceptions as exs
 from fastapi import UploadFile
 from tortoise.backends.base.client import TransactionContext
+from tortoise.exceptions import IntegrityError
 
 try:
     from config import s3_config, db_url, s3_cors_configuration
@@ -41,16 +43,17 @@ class UploadHandler:
         :param connection: подключение, которое следует использовать (указание на транзакцию извне этой функции)
         :return: объект загруженного пользователем файла
         """
-        uuid = uuid4()
-        upload = await Upload.create(filename=f"{uuid}{upload_file.filename[upload_file.filename.rfind('.'):]}",
-                                     using_db=connection)
         # Загрузка файла в S3
         try:
+            uuid = uuid4()
+            if imghdr.what(upload_file.file) is None:
+                raise IntegrityError
+            upload = await Upload.create(filename=f"{uuid}.{imghdr.what(upload_file.file)}", using_db=connection)
             self.s3_client.upload_fileobj(upload_file.file, 'moments_uploads', upload.filename)
         except exs.ClientError as e:
             # Если проблема с S3, то логируем и поднимаем ошибку
             logging.error(e, exc_info=True)
-            raise
+            raise IntegrityError
         return upload
 
     def download(self, upload: Upload) -> str:

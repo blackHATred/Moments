@@ -78,6 +78,6 @@ async def unlike_comment(user: UserDep, comment_id: int):
 async def is_comment_liked(user: UserDep, comment_id: int):
     try:
         comment = await Comment.get(id=comment_id)
-        return {"liked": await MomentLike.exists(author=user, object=comment)}
+        return {"liked": await CommentLike.exists(author=user, object=comment)}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого комментария не существует")

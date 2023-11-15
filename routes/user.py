@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, HTTPException
 import tortoise.exceptions as exs
 from starlette import status
 from starlette.responses import RedirectResponse
+from tortoise.transactions import in_transaction
 
 from handlers.CentrifugoHandler import get_cent_token
 from handlers.UploadHandler import upload_handler
@@ -15,12 +16,13 @@ router = APIRouter()
 @router.post("/register")
 async def user_register(email: str, nickname: str, password: str):
     try:
-        user = await User.create(email=email, nickname=nickname, password=User.crypt_password(password))
+        await User.validate_password(password)
+        user = await User.create(email=email.lower(), nickname=nickname.lower(), password=User.crypt_password(password))
         logging.info(f"Зарегистрирован пользователь {user.id}")
         return {"status": "success", "message": "Пользователь успешно создан"}
     except exs.IntegrityError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=r"Пользователь с таким логином и\или никнеймом уже существует")
+                            detail=r"Пользователь с такой почтой и\или никнеймом уже существует")
     except exs.ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Произошла ошибка валидации: {e}")
 
@@ -28,10 +30,10 @@ async def user_register(email: str, nickname: str, password: str):
 @router.post("/login")
 async def user_login(login: str, password: str):
     try:
-        user = await User.get_or_none(nickname=login, password=User.crypt_password(password))
+        user = await User.get_or_none(nickname=login.lower(), password=User.crypt_password(password))
         if user is None:
             # Если не нашли по никнейму, то пробуем найти по почте
-            user = await User.get(email=login, password=User.crypt_password(password))
+            user = await User.get(email=login.lower(), password=User.crypt_password(password))
         return {"status": "success", "token": user.get_token()}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -40,11 +42,14 @@ async def user_login(login: str, password: str):
 @router.put("/update_info")
 async def user_update_info(user: UserDep, email: str | None, nickname: str | None):
     if email is not None:
-        user.email = email
+        user.email = email.lower()
     if nickname is not None:
-        user.nickname = nickname
+        user.nickname = nickname.lower()
     try:
         await user.save()
+    except exs.IntegrityError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=r"Пользователь с такой почтой и\или никнеймом уже существует")
     except exs.ValidationError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=fr"Произошла ошибка валидации: {e}")
     else:
@@ -53,10 +58,11 @@ async def user_update_info(user: UserDep, email: str | None, nickname: str | Non
 
 @router.put("/update_avatar")
 async def user_update_avatar(user: UserDep, file: UploadFile):
-    upload = await upload_handler.upload(file)
-    user.avatar = upload
     try:
-        await user.save()
+        async with in_transaction() as connection:
+            upload = await upload_handler.upload(file, connection)
+            user.avatar = upload
+            await user.save(using_db=connection)
         return {"status": "success", "message": "Аватарка успешно обновлена!"}
     except exs.IntegrityError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Произошла неожиданная ошибка")
@@ -67,6 +73,7 @@ async def user_update_password(user: UserDep, current_password: str, new_passwor
     if user.password != User.crypt_password(current_password):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный пароль")
     try:
+        await User.validate_password(new_password)
         # Если обновляем пароль, то чистим кэш
         await user.clear_cache()
         user.password = User.crypt_password(new_password)
