@@ -54,5 +54,5 @@ jobs:
         #  TEST_USER_NICK: testuser
         #  TEST_USER_PASSWORD: 123456789
         run: |
-          pytest
+          python -m pytest
       
