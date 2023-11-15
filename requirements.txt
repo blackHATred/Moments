@@ -1,7 +1,6 @@
 aiosqlite==0.17.0
 annotated-types==0.6.0
 anyio==3.7.1
-asyncmy==0.2.8
 bcrypt==4.0.1
 boto3==1.28.78
 botocore==1.31.78
