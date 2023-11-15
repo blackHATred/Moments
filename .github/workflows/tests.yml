@@ -46,7 +46,7 @@ jobs:
            docker run -d --name centrifugo -p 8000:8000 -v $PWD/centrifugo.json:/centrifugo/config.json centrifugo/centrifugo:latest
       # Устанавливаем memcached
       - name: Setup Memcached
-        uses: brpaz/memcached-action@v1.0.0
+        uses: niden/actions-memcached@v7
       # Запускаем тесты
       - name: Unit Testing with pytest
         # env:
