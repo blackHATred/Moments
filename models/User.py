@@ -2,30 +2,26 @@ import re
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
+from itsdangerous import BadSignature
 from starlette import status
 from tortoise import fields
 from tortoise.exceptions import DoesNotExist, ValidationError
+from tortoise.validators import MinLengthValidator
 
 from handlers.CacheHandler import mc
 from misc.secure import crypt, token_generator
 from models.Abstracts import CreateTimestamp
+from models.validators import EmailValidator
 
 
 class User(CreateTimestamp):
     id = fields.IntField(pk=True)
-    email = fields.CharField(max_length=2048, unique=True)
-    nickname = fields.CharField(max_length=100, unique=True)
+    email = fields.CharField(max_length=2048, unique=True, validators=[EmailValidator()])
+    nickname = fields.CharField(max_length=100, unique=True, validators=[MinLengthValidator(3)])
     password = fields.CharField(max_length=1024)
     avatar = fields.OneToOneField("models.Upload", on_delete=fields.SET_NULL, null=True, default=None)
     uploads = fields.ManyToManyField("models.Upload", on_delete=fields.SET_NULL)
     rating = fields.IntField(default=0)
-
-    async def save(self, *args, **kwargs):
-        if not self.is_valid_email(self.email):
-            raise ValidationError("Неверный email адрес")
-        User.validate_password(self.password)
-
-        await super().save(*args, **kwargs)
 
     @staticmethod
     def crypt_password(password: str) -> str:
@@ -63,13 +59,13 @@ class User(CreateTimestamp):
         :param token: токен
         :return: User
         """
-        payload = token_generator.loads(token)
         try:
+            payload = token_generator.loads(token)
             user = await User.get(id=payload.get('id'))
             if user.password != payload.get('password'):
                 # Неверный пароль равносилен несуществующему пользователю
                 raise DoesNotExist
-        except DoesNotExist:
+        except (DoesNotExist, BadSignature):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         else:
             return user
@@ -82,19 +78,11 @@ class User(CreateTimestamp):
         mc.delete(f"user_token:{self.id}")
 
     @staticmethod
-    def is_valid_email(email):
-        # Регулярное выражение для валидации email-адреса
-        email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-        return bool(re.match(email_pattern, email))
-
-    @staticmethod
-    def validate_password(password):
-        if len(password) < 8:
-            raise ValidationError("Пароль должен содержать минимум 8 символов")
-        if not re.search("[0-9]", password):
-            raise ValidationError("Пароль должен содержать минимум одну цифру")
-        if not re.search("[!@#$%^&*(),.?\":{}|<>]", password):
-            raise ValidationError("Пароль должен содержать минимум один специальный символ")
+    async def validate_password(password: str):
+        password_pattern = re.compile(r'^(?=.*\d)(?=.*[!@#$%^&*(),.?\":{}|<>])[A-Za-z\d!@#$%^&*(),.?\":{}|<>]{8,128}$')
+        if not re.match(password_pattern, password):
+            raise ValidationError("Пароль должен содержать как минимум одну цифру и один специальный символ и "
+                                  "иметь длину от 8 до 128 символов")
 
 
 UserDep = Annotated[User, Depends(User.get_from_token)]

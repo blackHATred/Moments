@@ -13,6 +13,8 @@ router = APIRouter()
 @router.post("/subscribe")
 async def subscribe(user: UserDep, author_id: int):
     try:
+        if user.id == author_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="На себя подписаться нельзя")
         author = await User.get(id=author_id)
         # Проверяем, возможно пользователь уже подписан
         if not await Subscription.exists(author=author, subscriber=user):
@@ -38,4 +40,8 @@ async def unsubscribe(user: UserDep, author_id: int):
 
 @router.get("/my_subscriptions")
 async def my_subscriptions(user: UserDep):
-    return {"subscriptions": await Subscription.filter(subscriber=user)}
+    return {
+        "subscriptions": await Subscription.filter(subscriber=user)
+        .prefetch_related("author")
+        .values_list("author_id", flat=True)
+    }

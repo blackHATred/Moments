@@ -14,6 +14,7 @@ from routes.moment import router as moment_router
 from routes.subscription import router as subscription_router
 from routes.like import router as like_router
 from routes.comment import router as comment_router
+from routes.notification import router as notification_router
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI()
@@ -22,6 +23,7 @@ app.include_router(moment_router, prefix="/moment")
 app.include_router(subscription_router, prefix="/subscription")
 app.include_router(like_router, prefix="/like")
 app.include_router(comment_router, prefix="/comment")
+app.include_router(notification_router, prefix="/notification")
 
 # Инициализируем ORM
 register_tortoise(
@@ -37,6 +39,7 @@ register_tortoise(
         'models.Upload',
         'models.User',
         'models.TagMoment',
+        'models.Notification',
     ]},
     generate_schemas=True,
     add_exception_handlers=True,
