@@ -10,25 +10,3 @@ class CreateTimestamp(Model):
 
     class Meta:
         abstract = True
-
-
-class LikeableAbstract(CreateTimestamp):
-    """
-    Абстрактная модель объекта, который можно лайкнуть
-    """
-    id = fields.IntField(pk=True)
-    author = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
-
-    class Meta:
-        abstract = True
-
-
-class LikeAbstract(CreateTimestamp):
-    """
-    Абстрактная модель лайка
-    """
-    id = fields.IntField(pk=True)
-    author = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
-
-    class Meta:
-        abstract = True

@@ -40,10 +40,7 @@ async def create_comment(user: UserDep, moment_id: int, text: str, background_ta
                     user=recipient,
                     html_text=f"Пользователь упомянул Вас",
                     background=background_tasks,
-                    connection=connection,
-                    pinned_user=user,
-                    pinned_post=moment,
-                    pinned_comment=comment
+                    connection=connection
                 )
             logging.info(f"Пользователь {user.id} оставил комментарий на пост {moment.id}")
         return {"status": "success", "message": "Комментарий успешно отправлен"}
@@ -78,7 +75,7 @@ async def update_comment(user: UserDep, comment_id: int, text: str, background_t
 
                 )
             comment.text = text
-            comment.save(using_db=connection)
+            await comment.save(using_db=connection)
         return {"status": "success", "message": "Комментарий успешно обновлён"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой комментарий не существует")
@@ -102,7 +99,7 @@ async def delete_comment(user: UserDep, comment_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой комментарий не существует")
 
 
-@router.get("/moment_comments")
+@router.get("/get_comments")
 async def get_moment_comments(moment_id: int, offset: int = 0):
     """
     Возвращает комментарии под моментом
@@ -120,7 +117,7 @@ async def get_moment_comments(moment_id: int, offset: int = 0):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
-@router.get("/moment_comment")
+@router.get("/get_comment")
 async def get_moment_comment(comment_id: int):
     """
     Возвращает информацию о комментарии под моментом
@@ -132,7 +129,23 @@ async def get_moment_comment(comment_id: int):
         return {
             "author": comment.author.id,
             "text": comment.text,
-            "likes": await CommentLike.filter(comment=comment)
+            "likes": await CommentLike.filter(object=comment).count()
         }
+    except exs.DoesNotExist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+
+@router.get("/my_comment")
+async def get_my_comment(user: UserDep, moment_id: int):
+    """
+    Получить свой комментарий под указанным моментом
+    :param user: пользователь, от лица которого совершается действие
+    :param moment_id: айди момент
+    :return: {"comment": comment.id} либо {"comment": null}
+    """
+    try:
+        moment = await Moment.get(id=moment_id)
+        comment = await Comment.get_or_none(moment=moment, author=user)
+        return {"comment": comment.id if comment is not None else None}
     except exs.DoesNotExist():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

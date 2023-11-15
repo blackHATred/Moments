@@ -1,13 +1,16 @@
+import re
 from html import escape
-from tortoise import fields, Model
+from tortoise import fields
 from tortoise.backends.base.client import TransactionContext
 
+from models.Abstracts import CreateTimestamp
 from models.User import User
-from models.Abstracts import LikeableAbstract
 from models.Tag import Tag
 
 
-class Moment(LikeableAbstract, Model):
+class Moment(CreateTimestamp):
+    id = fields.IntField(pk=True)
+    author = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     title = fields.CharField(max_length=128)
     description = fields.CharField(max_length=4096)
     views = fields.IntField(default=0)
@@ -31,7 +34,8 @@ class Moment(LikeableAbstract, Model):
         for part in description:
             if part[0] == "@":
                 # Упоминание другого пользователя
-                user = await User.get_or_none(nickname=part[1:], using_db=connection)
+                string = re.sub(r'[^a-zA-Zа-яА-Я0-9_]', '', part).lower()
+                user = await User.get_or_none(nickname=string, using_db=connection)
                 if user is not None:
                     users.append(user)
                     escaped_description.append(f'<a href="/user/{user.id}">{part}</a>')
@@ -39,13 +43,14 @@ class Moment(LikeableAbstract, Model):
                     escaped_description.append(escape(part, quote=True))
             elif part[0] == "#" and 1 < len(part) < 102:
                 # Тэг
-                tag = (await Tag.get_or_create(name=part[1:].lower(), using_db=connection))[0]
+                string = re.sub(r'[^a-zA-Zа-яА-Я0-9]', '', part).lower()
+                tag = (await Tag.get_or_create(name=string, using_db=connection))[0]
                 tags.append(tag)
                 escaped_description.append(part)
             else:
                 escaped_description.append(escape(part, quote=True))
 
-        return ''.join(escaped_description), tags, users
+        return ' '.join(escaped_description), tags, users
 
 
 

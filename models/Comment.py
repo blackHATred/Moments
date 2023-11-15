@@ -1,13 +1,16 @@
+import re
 from html import escape
 
 from tortoise import fields
 from tortoise.backends.base.client import TransactionContext
 
-from models.Abstracts import LikeableAbstract
+from models.Abstracts import CreateTimestamp
 from models.User import User
 
 
-class Comment(LikeableAbstract):
+class Comment(CreateTimestamp):
+    id = fields.IntField(pk=True)
+    author = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
     moment = fields.ForeignKeyField("models.Moment", on_delete=fields.CASCADE)
     text = fields.CharField(max_length=1024)
 
@@ -29,7 +32,8 @@ class Comment(LikeableAbstract):
         for part in text:
             if part[0] == "@":
                 # Упоминание другого пользователя
-                user = await User.get_or_none(nickname=part[1:], using_db=connection)
+                string = re.sub(r'[^a-zA-Zа-яА-Я0-9]', '', part).lower()
+                user = await User.get_or_none(nickname=string, using_db=connection)
                 if user is not None:
                     users.append(user)
                     escaped_description.append(f'<a href="/user/{user.id}">{part}</a>')
@@ -38,5 +42,5 @@ class Comment(LikeableAbstract):
             else:
                 escaped_description.append(escape(part, quote=True))
 
-        return ''.join(escaped_description), users
+        return ' '.join(escaped_description), users
 
