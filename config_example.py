@@ -13,11 +13,13 @@ s3_config = {
 # конфигурация CORS для S3
 s3_cors_configuration = {
     'CORSRules': [{
-        'AllowedHeaders': ['*'],  # <-- Указать домен своего сайта
+        'AllowedHeaders': ['*'],
         'AllowedMethods': ['GET'],
+        # Указать домен своего сайта. Хотя можно оставить и так, тогда картинки смогут открываться и на других сайтах
         'AllowedOrigins': ['*'],
         'ExposeHeaders': [],
-        'MaxAgeSeconds': 3000  # <-- Указать время действия сгенерированной ссылки
+        # Указать время кэша
+        'MaxAgeSeconds': 3000
     }]
 }
 # Ссылка для взаимодействия с БД. Можно юзать sqlite3/postgresql/mysql
@@ -30,5 +32,5 @@ memcached_server = ('localhost', 11211)
 with open("centrifugo.json", "r") as file:
     cent_config = json.load(file)
     CENTRIFUGO_API_KEY = cent_config.get("api_key")
-    CENTRIFUGO_SECRET = cent_config.get("token_hmac_secret_key")
+    CENTRIFUGO_SECRET = cent_config.get("secret")
 CENTRIFUGO_API_URL = "http://centrifugo:8000/api"

@@ -4,12 +4,14 @@ from fastapi import APIRouter, UploadFile, HTTPException, BackgroundTasks
 import tortoise.exceptions as exs
 from starlette import status
 from starlette.responses import RedirectResponse
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from handlers.UploadHandler import upload_handler
 from models.Moment import Moment
 from models.MomentLike import MomentLike
 from models.Notification import Notification
+from models.Subscription import Subscription
 from models.User import UserDep, User
 
 router = APIRouter()
@@ -63,6 +65,10 @@ async def get_moment_picture(moment_id: int):
 async def get_moment_info(moment_id: int):
     try:
         moment = await Moment.get(id=moment_id)
+        # Каждый такой запрос от фронтенда будем считать как один просмотр. При этом пользователь может посмотреть
+        # момент несколько раз - на это ограничений нет (похожим образом сделано, к примеру, в ютубе)
+        moment.views += 1
+        await moment.save()
         return {
             "title": moment.title,
             "description": moment.description,
@@ -115,3 +121,16 @@ async def user_moments(user_id: int, offset: int = 0):
         }
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+
+@router.get("/last_moments")
+async def last_moments(user: UserDep, offset: int = 0):
+    subs = await Subscription.filter(subscriber=user).prefetch_related("author").values_list("author", flat=True)
+    moments = await (Moment
+                     .filter(Q(author__in=subs))
+                     .order_by("-created_at")
+                     .offset(offset)
+                     .limit(100)
+                     .values_list("id", flat=True)
+                     )
+    return {"moments": moments}

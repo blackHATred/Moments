@@ -49,10 +49,11 @@ jobs:
         uses: niden/actions-memcached@v7
       # Запускаем тесты
       - name: Unit Testing with pytest
-        # env:
-        #  TEST_USER_EMAIL: test@email.com
-        #  TEST_USER_NICK: testuser
-        #  TEST_USER_PASSWORD: 123456789
+        env:
+          S3_ENDPOINT_URL: '${{ secrets.S3_ENDPOINT_URL }}'
+          S3_ACCESS_KEY: '${{ secrets.S3_ACCESS_KEY }}'
+          S3_SECRET_KEY: '${{ secrets.S3_SECRET_KEY }}'
+          S3_REGION: '${{ secrets.S3_REGION }}'
         run: |
           python -m pytest
       

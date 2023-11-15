@@ -21,11 +21,6 @@ async def subscribe(user: UserDep, author_id: int):
         return {"status": "success", "message": "Подписка успешно оформлена"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой автор не существует")
-    except Exception as e:
-        # Произошла ошибка иного рода - проблемы на сервере. Стоит залогировать
-        logging.error(e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Произошла непредвиденная ошибка. Попробуйте повторить попытку чуть позже")
 
 
 @router.post("/unsubscribe")
@@ -39,8 +34,8 @@ async def unsubscribe(user: UserDep, author_id: int):
         return {"status": "success", "message": "Подписка успешно оформлена"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой автор не существует")
-    except Exception as e:
-        # Произошла ошибка иного рода - проблемы на сервере. Стоит залогировать
-        logging.error(e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Произошла непредвиденная ошибка. Попробуйте повторить попытку чуть позже")
+
+
+@router.get("/my_subscriptions")
+async def my_subscriptions(user: UserDep):
+    return {"subscriptions": await Subscription.filter(subscriber=user)}
