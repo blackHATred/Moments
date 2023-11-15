@@ -22,12 +22,7 @@ async def user_register(email: str, nickname: str, password: str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail=r"Пользователь с таким логином и\или никнеймом уже существует")
     except exs.ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=fr"Произошла ошибка валидации: {e}")
-    except Exception as e:
-        # Произошла ошибка иного рода - проблемы на сервере. Стоит залогировать
-        logging.error(e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Произошла непредвиденная ошибка. Попробуйте повторить попытку чуть позже")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Произошла ошибка валидации: {e}")
 
 
 @router.post("/login")
@@ -39,7 +34,7 @@ async def user_login(login: str, password: str):
             user = await User.get(email=login, password=User.crypt_password(password))
         return {"status": "success", "token": user.get_token()}
     except exs.DoesNotExist:
-        return {"status": "error", "message": f"Введены неверные данные"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.put("/update_info")
@@ -72,20 +67,23 @@ async def user_update_password(user: UserDep, current_password: str, new_passwor
     if user.password != User.crypt_password(current_password):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный пароль")
     try:
-        if len(new_password) < 8:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Минимальная длина пароля - 8 символов")
         # Если обновляем пароль, то чистим кэш
-        user.clear_cache()
+        await user.clear_cache()
         user.password = User.crypt_password(new_password)
+        # !!! Пользователь вылетит, так как его токен станет невалидным!
         await user.save()
-    except exs.IntegrityError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=r"Новый пароль некорректен")
+        return {"status": "success", "message": "Пароль успешно обновлён!"}
+    except exs.IntegrityError or exs.ValidationError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Новый пароль некорректен")
 
 
 @router.get("/avatar")
 async def get_avatar(user_id: int):
     try:
         user = await User.get(id=user_id).prefetch_related("avatar")
+        if user.avatar is None:
+            # Если аватарки нет, то отображаем стандартную
+            return RedirectResponse(upload_handler.download_default_avatar())
         return RedirectResponse(upload_handler.download(user.avatar))
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

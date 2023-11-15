@@ -1,12 +1,11 @@
+import re
 from typing import Annotated
-from pymemcache.client import base
 
 from fastapi import Depends, HTTPException
 from starlette import status
 from tortoise import fields
-from tortoise.exceptions import DoesNotExist
+from tortoise.exceptions import DoesNotExist, ValidationError
 
-from config import memcached_server
 from handlers.CacheHandler import mc
 from misc.secure import crypt, token_generator
 from models.Abstracts import CreateTimestamp
@@ -14,12 +13,19 @@ from models.Abstracts import CreateTimestamp
 
 class User(CreateTimestamp):
     id = fields.IntField(pk=True)
-    email = fields.CharField(max_length=255, unique=True)
+    email = fields.CharField(max_length=2048, unique=True)
     nickname = fields.CharField(max_length=100, unique=True)
     password = fields.CharField(max_length=1024)
     avatar = fields.OneToOneField("models.Upload", on_delete=fields.SET_NULL, null=True, default=None)
     uploads = fields.ManyToManyField("models.Upload", on_delete=fields.SET_NULL)
     rating = fields.IntField(default=0)
+
+    async def save(self, *args, **kwargs):
+        if not self.is_valid_email(self.email):
+            raise ValidationError("Неверный email адрес")
+        User.validate_password(self.password)
+
+        await super().save(*args, **kwargs)
 
     @staticmethod
     def crypt_password(password: str) -> str:
@@ -29,7 +35,9 @@ class User(CreateTimestamp):
             # Cache miss
             encrypted = crypt(password)
             mc.set(f"crypt_password:{password}", encrypted)
-        return encrypted
+            return encrypted
+        else:
+            return encrypted.decode('utf-8')
 
     def get_token(self) -> str:
         """
@@ -44,7 +52,9 @@ class User(CreateTimestamp):
             # Cache miss
             token = token_generator.dumps({'id': self.id, 'password': self.password})
             mc.set(f"user_token:{self.id}", token)
-        return token
+            return token
+        else:
+            return token.decode('utf-8')
 
     @staticmethod
     async def get_from_token(token: str):
@@ -53,12 +63,7 @@ class User(CreateTimestamp):
         :param token: токен
         :return: User
         """
-        # Используем кэш
-        payload = mc.get(f"user_payload:{token}")
-        if payload is None:
-            # Cache miss
-            payload = token_generator.loads(token)
-            mc.set(f"user_payload:{token}", payload)
+        payload = token_generator.loads(token)
         try:
             user = await User.get(id=payload.get('id'))
             if user.password != payload.get('password'):
@@ -75,6 +80,21 @@ class User(CreateTimestamp):
         :return: None
         """
         mc.delete(f"user_token:{self.id}")
+
+    @staticmethod
+    def is_valid_email(email):
+        # Регулярное выражение для валидации email-адреса
+        email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        return bool(re.match(email_pattern, email))
+
+    @staticmethod
+    def validate_password(password):
+        if len(password) < 8:
+            raise ValidationError("Пароль должен содержать минимум 8 символов")
+        if not re.search("[0-9]", password):
+            raise ValidationError("Пароль должен содержать минимум одну цифру")
+        if not re.search("[!@#$%^&*(),.?\":{}|<>]", password):
+            raise ValidationError("Пароль должен содержать минимум один специальный символ")
 
 
 UserDep = Annotated[User, Depends(User.get_from_token)]

@@ -21,6 +21,7 @@ async def create_comment(user: UserDep, moment_id: int, text: str, background_ta
     :param user: пользователь, от лица которого совершается действие
     :param moment_id: айди момента
     :param text: содержание комментария
+    :param background_tasks: менеджер фоновых задач FastAPI
     :return: {"status": "success", "message": "Комментарий успешно отправлен"} при успехе, иначе - ошибка 4xx
     """
     try:
@@ -48,11 +49,6 @@ async def create_comment(user: UserDep, moment_id: int, text: str, background_ta
         return {"status": "success", "message": "Комментарий успешно отправлен"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой момент не существует")
-    except Exception as e:
-        # Произошла ошибка иного рода - проблемы на сервере. Стоит залогировать
-        logging.error(e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Произошла непредвиденная ошибка. Попробуйте повторить попытку чуть позже")
 
 
 @router.put("/update")
@@ -62,6 +58,7 @@ async def update_comment(user: UserDep, comment_id: int, text: str, background_t
     :param user: пользователь, от лица которого совершается действие
     :param comment_id: айди комментария
     :param text: новое содержание комментария
+    :param background_tasks: менеджер фоновых задач FastAPI
     :return: {"status": "success", "message": "Комментарий успешно обновлён"} при успехе, иначе - ошибка 4xx
     """
     try:
@@ -85,11 +82,24 @@ async def update_comment(user: UserDep, comment_id: int, text: str, background_t
         return {"status": "success", "message": "Комментарий успешно обновлён"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой комментарий не существует")
-    except Exception as e:
-        # Произошла ошибка иного рода - проблемы на сервере. Стоит залогировать
-        logging.error(e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Произошла непредвиденная ошибка. Попробуйте повторить попытку чуть позже")
+
+
+@router.delete("/delete")
+async def delete_comment(user: UserDep, comment_id: int):
+    """
+    Удаляет выбранный комментарий пользователя
+    :param user: пользователь, от лица которого совершается действие
+    :param comment_id: айди комментария
+    :return: {"status": "success", "message": "Комментарий успешно удалён"} при успехе, иначе - ошибка 4хх
+    """
+    try:
+        comment = await Comment.get(id=comment_id).prefetch_related("author")
+        if comment.author != user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+        await comment.delete()
+        return {"status": "success", "message": "Комментарий успешно удалён"}
+    except exs.DoesNotExist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой комментарий не существует")
 
 
 @router.get("/moment_comments")

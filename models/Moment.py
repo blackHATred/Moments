@@ -1,7 +1,6 @@
 from html import escape
 from tortoise import fields, Model
 from tortoise.backends.base.client import TransactionContext
-from tortoise.transactions import in_transaction
 
 from models.User import User
 from models.Abstracts import LikeableAbstract
@@ -11,11 +10,13 @@ from models.Tag import Tag
 class Moment(LikeableAbstract, Model):
     title = fields.CharField(max_length=128)
     description = fields.CharField(max_length=4096)
+    views = fields.IntField(default=0)
     picture = fields.ForeignKeyField("models.Upload", on_delete=fields.CASCADE)
     tags = fields.ManyToManyField("models.Tag", related_name="moments", through='tagmoment')
 
     @staticmethod
-    async def parser(description: str, connection: TransactionContext | None = None) -> tuple[str, list[Tag], list[User]]:
+    async def parser(description: str,
+                     connection: TransactionContext | None = None) -> tuple[str, list[Tag], list[User]]:
         """
         Парсит описание момента и предлагает теги к посту. Также парсит все упоминания других пользователей
         :param description: Описание момента
@@ -47,7 +48,5 @@ class Moment(LikeableAbstract, Model):
         return ''.join(escaped_description), tags, users
 
 
-class TagMoment(Model):
-    moment = fields.ForeignKeyField('models.Moment', on_delete=fields.RESTRICT)
-    tag = fields.ForeignKeyField('models.Tag', on_delete=fields.RESTRICT)
+
 
