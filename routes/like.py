@@ -16,12 +16,16 @@ router = APIRouter()
 @router.post("/like_moment")
 async def like_moment(user: UserDep, moment_id: int):
     try:
-        moment = await Moment.get(id=moment_id)
+        moment = await Moment.get(id=moment_id).prefetch_related("author")
+        if moment.author == user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нельзя ставить лайк себе")
         # Проверяем, возможно лайк уже поставлен
         if not await MomentLike.exists(author=user, object=moment):
             await MomentLike.create(author=user, object=moment)
-        logging.info(f"Пользователь {user.id} поставил лайк на момент {moment.id}")
-        return {"status": "success", "message": "Лайк на момент успешно поставлен"}
+        author = moment.author
+        author.rating += 1
+        await author.save()
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого момента не существует")
 
@@ -29,21 +33,14 @@ async def like_moment(user: UserDep, moment_id: int):
 @router.post("/unlike_moment")
 async def unlike_moment(user: UserDep, moment_id: int):
     try:
-        moment = await Moment.get(id=moment_id)
+        moment = await Moment.get(id=moment_id).prefetch_related("author")
         # Проверяем, возможно лайк и так не стоит
         if await MomentLike.exists(author=user, object=moment):
             await (await MomentLike.get(author=user, object=moment)).delete()
-        logging.info(f"Пользователь {user.id} убрал лайк с момента {moment.id}")
-        return {"status": "success", "message": "Лайк успешно убран"}
-    except exs.DoesNotExist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого момента не существует")
-
-
-@router.get("/is_moment_liked")
-async def is_moment_liked(user: UserDep, moment_id: int):
-    try:
-        moment = await Moment.get(id=moment_id)
-        return {"liked": await MomentLike.exists(author=user, object=moment)}
+        author = moment.author
+        author.rating -= 1
+        await author.save()
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого момента не существует")
 
@@ -51,12 +48,16 @@ async def is_moment_liked(user: UserDep, moment_id: int):
 @router.post("/like_comment")
 async def like_comment(user: UserDep, comment_id: int):
     try:
-        comment = await Comment.get(id=comment_id)
+        comment = await Comment.get(id=comment_id).prefetch_related("author")
+        if comment.author == user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Нельзя ставить лайк себе")
         # Проверяем, возможно лайк на комментарий уже поставлен
         if not await CommentLike.exists(author=user, object=comment):
             await CommentLike.create(author=user, object=comment)
-        logging.info(f"Пользователь {user.id} поставил лайк на комментарий {comment.id}")
-        return {"status": "success", "message": "Лайк на комментарий успешно поставлен"}
+        author = comment.author
+        author.rating += 1
+        await author.save()
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого комментария не существует")
 
@@ -64,20 +65,13 @@ async def like_comment(user: UserDep, comment_id: int):
 @router.post("/unlike_comment")
 async def unlike_comment(user: UserDep, comment_id: int):
     try:
-        comment = await Comment.get(id=comment_id)
+        comment = await Comment.get(id=comment_id).prefetch_related("author")
         # Проверяем, возможно лайк и так не стоит
         if await CommentLike.exists(author=user, object=comment):
             await (await CommentLike.get(author=user, object=comment)).delete()
-        logging.info(f"Пользователь {user.id} убрал лайк с комментария {comment.id}")
-        return {"status": "success", "message": "Лайк успешно убран"}
-    except exs.DoesNotExist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого комментария не существует")
-
-
-@router.get("/is_comment_liked")
-async def is_comment_liked(user: UserDep, comment_id: int):
-    try:
-        comment = await Comment.get(id=comment_id)
-        return {"liked": await CommentLike.exists(author=user, object=comment)}
+        author = comment.author
+        author.rating -= 1
+        await author.save()
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такого комментария не существует")

@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from config_example import CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY, CENTRIFUGO_SECRET
 
-cent_client = Client(CENTRIFUGO_API_URL, api_key=CENTRIFUGO_API_KEY, timeout=3)
+cent_client = Client(CENTRIFUGO_API_URL, CENTRIFUGO_API_KEY, 3)
 
 
 async def get_cent_token(user_id: int) -> dict:
@@ -19,7 +19,8 @@ async def get_cent_token(user_id: int) -> dict:
     """
     claims = {
         "sub": user_id,
+        "channel": f"personal_notifications:{user_id}",
         "exp": int(time.time()) + 24 * 3600,
     }
     token = jwt.encode(claims, CENTRIFUGO_SECRET, algorithm="HS256")
-    return {"token": token}
+    return {"cent_token": token}

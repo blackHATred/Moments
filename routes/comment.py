@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 import tortoise.exceptions as exs
 from starlette import status
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from models.Comment import Comment
@@ -22,7 +23,7 @@ async def create_comment(user: UserDep, moment_id: int, text: str, background_ta
     :param moment_id: айди момента
     :param text: содержание комментария
     :param background_tasks: менеджер фоновых задач FastAPI
-    :return: {"status": "success", "message": "Комментарий успешно отправлен"} при успехе, иначе - ошибка 4xx
+    :return: {"status": "success"} при успехе, иначе - ошибка 4xx
     """
     try:
         async with in_transaction() as connection:
@@ -35,50 +36,17 @@ async def create_comment(user: UserDep, moment_id: int, text: str, background_ta
             comment = await Comment.create(author=user, moment=moment, text=text, using_db=connection)
             for recipient in recipients:
                 # Отправляем уведомления пользователям, которых упомянули
-                # TODO: сделать html текст уведомления
                 await Notification.send_notification(
                     user=recipient,
-                    html_text=f"Пользователь упомянул Вас",
+                    html_text=f"Пользователь <a href=\"/user/{user.id}\">@{user.nickname}</a> упомянул вас в своём "
+                              f"комментарии под <a href=\"/moment/{moment.id}\">моментом</a>",
                     background=background_tasks,
                     connection=connection
                 )
             logging.info(f"Пользователь {user.id} оставил комментарий на пост {moment.id}")
-        return {"status": "success", "message": "Комментарий успешно отправлен"}
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой момент не существует")
-
-
-@router.put("/update")
-async def update_comment(user: UserDep, comment_id: int, text: str, background_tasks: BackgroundTasks):
-    """
-    Обновление содержания комментария
-    :param user: пользователь, от лица которого совершается действие
-    :param comment_id: айди комментария
-    :param text: новое содержание комментария
-    :param background_tasks: менеджер фоновых задач FastAPI
-    :return: {"status": "success", "message": "Комментарий успешно обновлён"} при успехе, иначе - ошибка 4xx
-    """
-    try:
-        async with in_transaction() as connection:
-            comment = await Comment.get(id=comment_id, using_db=connection).prefetch_related("author")
-            if comment.author != user:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-            text, recipients = await Comment.parser(text, connection)
-            for recipient in recipients:
-                # Отправляем уведомления пользователям, которых упомянули
-                # TODO: сделать html текст уведомления
-                await Notification.send_notification(
-                    user=recipient,
-                    html_text=f'Пользователь <a href="/user/{user.id}">@{user.nickname}</a>упомянул Вас',
-                    background=background_tasks,
-                    connection=connection,
-
-                )
-            comment.text = text
-            await comment.save(using_db=connection)
-        return {"status": "success", "message": "Комментарий успешно обновлён"}
-    except exs.DoesNotExist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой комментарий не существует")
 
 
 @router.delete("/delete")
@@ -100,27 +68,35 @@ async def delete_comment(user: UserDep, comment_id: int):
 
 
 @router.get("/get_comments")
-async def get_moment_comments(moment_id: int, offset: int = 0):
+async def get_moment_comments(user: UserDep, moment_id: int, last_comment: int = 0):
     """
     Возвращает комментарии под моментом
+    :param user: пользователь
     :param moment_id: айди момента, под которым хотим получить комментарии
-    :param offset: офсет списка комментариев
+    :param last_comment: айди последнего полученного комментария
     :return: комментарии в виде {"comments": [...]}
     """
     try:
         moment = await Moment.get(id=moment_id)
-        comments = await Comment.filter(moment=moment).offset(offset).limit(100).values_list("id", flat=True)
+        comments = Comment.filter(moment=moment)
         return {
-            "comments": comments
+            "total": await comments.count(),
+            "comments": await (comments
+                               .order_by("-created_at")
+                               .exclude(Q(id__lt=last_comment))
+                               .exclude(author=user)
+                               .limit(10)
+                               .values_list("id", flat=True))
         }
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.get("/get_comment")
-async def get_moment_comment(comment_id: int):
+async def get_moment_comment(user: UserDep, comment_id: int):
     """
     Возвращает информацию о комментарии под моментом
+    :param user: пользователь
     :param comment_id: айди комментария
     :return: информация в виде {"author": айди_автора, "text": "содержание комментария", "likes": количество_лайков}
     """
@@ -128,8 +104,10 @@ async def get_moment_comment(comment_id: int):
         comment = await Comment.get(id=comment_id).prefetch_related("author")
         return {
             "author": comment.author.id,
+            "author_nickname": comment.author.nickname,
             "text": comment.text,
-            "likes": await CommentLike.filter(object=comment).count()
+            "likes": await CommentLike.filter(object=comment).count(),
+            "liked": await CommentLike.filter(author=user, object=comment).exists()
         }
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -147,5 +125,5 @@ async def get_my_comment(user: UserDep, moment_id: int):
         moment = await Moment.get(id=moment_id)
         comment = await Comment.get_or_none(moment=moment, author=user)
         return {"comment": comment.id if comment is not None else None}
-    except exs.DoesNotExist():
+    except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

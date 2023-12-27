@@ -14,6 +14,7 @@ from models.User import User
 class Notification(CreateTimestamp):
     id = fields.IntField(pk=True)
     text = fields.CharField(max_length=1024)
+    read = fields.BooleanField(default=False)
     recipient = fields.ForeignKeyField("models.User", on_delete=fields.CASCADE)
 
     @staticmethod
@@ -38,8 +39,27 @@ class Notification(CreateTimestamp):
         :param text: содержание уведомления
         """
         try:
-            cent_client.publish(f"notifications:{user.id}", text)
+            cent_client.publish(f"personal_notifications:{user.id}", {"data": text})
         except CentException as e:
             # Ошибка некритична, но её стоит отследить
             logging.error(e, exc_info=True)
+
+    @staticmethod
+    async def get_unread_notifications(user: User):
+        # Будем отправлять не более 10 уведомлений за раз. Кроме содержимого уведомлений больше ничего не нужно
+        return await (Notification
+                      .filter(recipient=user, read=False)
+                      .order_by("-created_at")
+                      .limit(10)
+                      .values_list("text"))
+
+    @staticmethod
+    async def set_read_all(user: User):
+        # Помечаем все уведомления прочитанными
+        await (Notification
+               .filter(recipient=user, read=False)
+               .update(read=True))
+        # Очищаем историю
+        cent_client.history_remove(f"personal_notifications:{user.id}")
+
 

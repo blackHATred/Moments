@@ -43,7 +43,7 @@ class Moment(CreateTimestamp):
                     escaped_description.append(escape(part, quote=True))
             elif part[0] == "#" and 1 < len(part) < 102:
                 # Тэг
-                string = re.sub(r'[^a-zA-Zа-яА-Я0-9]', '', part).lower()
+                string = re.sub(r'[^a-zA-Zа-яА-Я0-9_]', '', part).lower()
                 tag = (await Tag.get_or_create(name=string, using_db=connection))[0]
                 tags.append(tag)
                 escaped_description.append(part)

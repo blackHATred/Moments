@@ -1,6 +1,17 @@
 {
-  "secret": "token_hmac_secret_key",
-  "api_key": "secretcentkey",
-  "admin_password": "admin_password",
-  "admin_secret": "admin_secret"
+  "token_hmac_secret_key": "cfe741bd-c1a8-4605-87b2-0434ed0f75eb",
+  "admin_password": "7b7b27f8-46d1-415a-864a-baf1cc3e6622",
+  "admin_secret": "bf637e1f-8a27-4348-9289-520b7a12b5de",
+  "api_key": "1669b3c4-9a12-48ca-bd24-c986055d6009",
+  "port": "10001",
+  "allowed_origins": ["*"],
+  "namespaces": [
+    {
+      "name": "personal_notifications",
+      "history_size": 10,
+      "history_ttl": "300s"
+    }
+  ],
+  "proxy_connect_endpoint": "http://localhost:8000/notification/connect",
+  "proxy_connect_timeout":  "3s"
 }

@@ -20,7 +20,7 @@ async def subscribe(user: UserDep, author_id: int):
         if not await Subscription.exists(author=author, subscriber=user):
             await Subscription.create(author=author, subscriber=user)
         logging.info(f"Пользователь {user.id} подписался на {author.id}")
-        return {"status": "success", "message": "Подписка успешно оформлена"}
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой автор не существует")
 
@@ -33,15 +33,6 @@ async def unsubscribe(user: UserDep, author_id: int):
         if await Subscription.exists(author=author, subscriber=user):
             await (await Subscription.get(author=author, subscriber=user)).delete()
         logging.info(f"Пользователь {user.id} отписался от {author.id}")
-        return {"status": "success", "message": "Подписка успешно оформлена"}
+        return {"status": "success"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Такой автор не существует")
-
-
-@router.get("/my_subscriptions")
-async def my_subscriptions(user: UserDep):
-    return {
-        "subscriptions": await Subscription.filter(subscriber=user)
-        .prefetch_related("author")
-        .values_list("author_id", flat=True)
-    }

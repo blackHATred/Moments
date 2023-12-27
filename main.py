@@ -1,7 +1,10 @@
 import logging
 
 from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
+
+from handlers.CacheHandler import mc
 from handlers.UploadHandler import upload_handler
 
 try:
@@ -44,6 +47,20 @@ register_tortoise(
     generate_schemas=True,
     add_exception_handlers=True,
 )
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://localhost:3000",
+]
+
+# лучше не использовать такие настройки в проде
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -54,3 +71,4 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     upload_handler.close()
+    mc.close()

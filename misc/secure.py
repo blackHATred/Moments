@@ -1,5 +1,5 @@
 import itsdangerous
-from passlib.context import CryptContext
+from passlib.hash import pbkdf2_sha256
 
 try:
     from config import TOKEN_SECRET_KEY
@@ -7,7 +7,6 @@ except ModuleNotFoundError:
     from config_example import TOKEN_SECRET_KEY
 
 # Эта штука под капотом даже автоматически генерирует соль
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 token_generator = itsdangerous.URLSafeSerializer(TOKEN_SECRET_KEY)
 
 
@@ -17,7 +16,7 @@ def crypt(string: str) -> str:
     :param string: пароль или иная строка
     :return: хэш пароля
     """
-    return pwd_context.hash(string)
+    return pbkdf2_sha256.using(salt=bytes(TOKEN_SECRET_KEY, encoding="utf8"), rounds=1000).hash(string)
 
 
 def verify(string: str, hashed: str) -> bool:
@@ -27,5 +26,6 @@ def verify(string: str, hashed: str) -> bool:
     :param hashed: сверяемый хэш
     :return: True/False
     """
-    return pwd_context.verify(string, hashed)
+    return pbkdf2_sha256.using(salt=bytes(TOKEN_SECRET_KEY, encoding="utf8"), rounds=1000).verify(string, hashed)
+
 

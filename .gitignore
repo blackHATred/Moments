@@ -1,3 +1,6 @@
 /config.py
 /creds.txt
 /db.sqlite3
+/ngrok.exe
+/centrifugo.exe
+/memcached.exe

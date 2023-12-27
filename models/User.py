@@ -1,3 +1,4 @@
+import base64
 import re
 from typing import Annotated
 
@@ -33,7 +34,7 @@ class User(CreateTimestamp):
             mc.set(f"crypt_password:{password}", encrypted)
             return encrypted
         else:
-            return encrypted.decode('utf-8')
+            return encrypted.decode("utf-8")
 
     def get_token(self) -> str:
         """
@@ -41,7 +42,7 @@ class User(CreateTimestamp):
         :return: токен
         """
         # Пароль тоже включаем в нагрузку. Тогда если юзер сменит пароль на одном девайсе, то со всех остальных
-        # он выйдет автоматически, т.к. старые токены перестанут работать. Вот такая фича.
+        # он выйдет автоматически, т.к. старые токены перестанут работать.
         # Используем кэш
         token = mc.get(f"user_token:{self.id}")
         if token is None:

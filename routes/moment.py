@@ -8,11 +8,11 @@ from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from handlers.UploadHandler import upload_handler
-from models.Comment import Comment
 from models.Moment import Moment
 from models.MomentLike import MomentLike
 from models.Notification import Notification
 from models.Subscription import Subscription
+from models.TagMoment import TagMoment
 from models.User import UserDep, User
 
 router = APIRouter()
@@ -32,15 +32,15 @@ async def moment_create(user: UserDep, file: UploadFile, title: str, description
                 await moment.tags.add(tag, using_db=connection)
             for recipient in recipients:
                 # Отправляем уведомления пользователям, которых упомянули
-                # TODO: сделать html текст уведомления
                 await Notification.send_notification(
                     user=recipient,
-                    html_text=f"Пользователь упомянул Вас",
+                    html_text=f"Пользователь <a href=\"/user/{user.id}\">@{user.nickname}</a> упомянул вас в своём "
+                              f"<a href=\"/moment/{moment.id}\">моменте</a>",
                     background=background_tasks,
                     connection=connection
                 )
         logging.info(f"Пользователь {user.id} выложил новый пост {moment.id}")
-        return {"status": "success", "message": "Момент успешно создан"}
+        return {"status": "success"}
     except exs.IntegrityError as e:
         logging.error(e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -58,12 +58,13 @@ async def get_moment_picture(moment_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
-@router.get("/info")
-async def get_moment_info(moment_id: int):
+@router.get("/get")
+async def get_moment_info(user: UserDep, moment_id: int):
     try:
-        moment = await Moment.get(id=moment_id).prefetch_related("tags")
+        moment = await Moment.get(id=moment_id).prefetch_related("tags", "author")
         # Каждый такой запрос от фронтенда будем считать как один просмотр. При этом пользователь может посмотреть
-        # момент несколько раз - на это ограничений нет (похожим образом сделано, к примеру, в ютубе)
+        # момент несколько раз - на это ограничений нет (похожим образом сделано, к примеру, в ютубе, хотя,
+        # конечно же, было бы неплохо добавить защиту от накрутки просмотров)
         moment.views += 1
         await moment.save()
         return {
@@ -72,70 +73,50 @@ async def get_moment_info(moment_id: int):
             "likes": await MomentLike.filter(object=moment).count(),
             "views": moment.views,
             "tags": [tag.name for tag in moment.tags],
-            "comments": await Comment.filter(moment=moment).count()
+            "author": moment.author.id,
+            "liked": await MomentLike.filter(author=user, object=moment).exists()
         }
-    except exs.DoesNotExist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-
-@router.put("/update")
-async def update_moment(user: UserDep, moment_id: int, title: str | None = None, description: str | None = None):
-    # Картинку обновлять нельзя! Это считается как новый момент
-    try:
-        async with in_transaction() as connection:
-            moment = await Moment.get(id=moment_id, author=user, using_db=connection)
-            if description is not None:
-                description, tags, users = await Moment.parser(description, connection)
-                moment.tags.clear(using_db=connection)
-                for tag in tags:
-                    moment.tags.add(tag, using_db=connection)
-                moment.description = description
-            if title is not None:
-                moment.title = title
-            await moment.save(using_db=connection)
-        return {"status": "success", "message": "Момент успешно изменён"}
-    except exs.DoesNotExist:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    except exs.ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Произошла ошибка валидации: {e}")
-
-
-@router.delete("/delete")
-async def delete_moment(user: UserDep, moment_id: int):
-    try:
-        moment = await Moment.get(id=moment_id, author=user)
-        # TODO: Подкапотно также удалятся все уведомления, отосланные при создании поста
-        await moment.delete()
-        return {"status": "success", "message": "Момент успешно удалён"}
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
 @router.get("/user_moments")
-async def user_moments(user_id: int, offset: int = 0):
+async def user_moments(user_id: int, last_moment: int = 0):
     try:
         user = await User.get(id=user_id)
         return {
-            "moments": await Moment.filter(author=user).offset(offset).limit(100).values_list("id", flat=True)
+            "moments": await Moment
+            .filter(author=user)
+            .order_by("-created_at")
+            .exclude(Q(id__lt=last_moment))
+            .limit(10)
+            .values_list("id", flat=True)
         }
     except exs.DoesNotExist:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
 
-@router.get("/last_moments")
-async def last_moments(user: UserDep, offset: int = 0):
-    subs = await Subscription.filter(subscriber=user).values_list("author_id", flat=True)
-    moments = await (Moment
-                     .filter(Q(author_id__in=subs))
-                     .order_by("-created_at")
-                     .offset(offset)
-                     .limit(100)
-                     .values_list("id", flat=True)
-                     )
-    return {"moments": moments}
+@router.get("/feed")
+async def feed(user: UserDep, last_moment: int = 0):
+    subscriptions = await Subscription.filter(subscriber=user).values_list("author_id", flat=True)
+    return {
+        "moments": await Moment
+        .filter(Q(author_id__in=subscriptions))
+        .exclude(Q(id__lt=last_moment))
+        .order_by("-created_at")
+        .limit(10)
+        .values_list("id", flat=True)
+    }
 
 
-@router.get("/tag_search")
-async def tag_search(tag: str):
-    moments = await Moment.filter(tags__name=tag).values_list("id", flat=True)
-    return {"moments": moments}
+@router.get("/search")
+async def search(phrase: str, last_moment: int = 0):
+    possible_user = await User.get_or_none(nickname=phrase)
+    return {
+        "moments": await TagMoment
+        .filter(Q(tag__name=phrase))
+        .exclude(Q(id__lt=last_moment))
+        .limit(10)
+        .values_list("moment_id", flat=True),
+        "user": possible_user.id if possible_user is not None else None
+    }
